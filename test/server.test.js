@@ -2,100 +2,110 @@ const tap = require('tap');
 const supertest = require('supertest');
 const app = require('../app');
 const server = supertest(app);
+const { newsCache } = require('../routes/data');
 
 const mockUser = {
     name: 'Clark Kent',
     email: 'clark@superman.com',
     password: 'Krypt()n8',
-    preferences:['movies', 'comics']
+    preferences: ['us', 'general']
 };
 
 let token = '';
 
 // Auth tests
-
-tap.test('POST /users/signup', async (t) => { 
-    const response = await server.post('/users/signup').send(mockUser);
-    t.equal(response.status, 200);
+tap.test('POST /api/auth/users/signup', async (t) => {
+    const res = await server.post('/api/auth/users/signup').send(mockUser);
+    t.equal(res.status, 200);
     t.end();
 });
 
-tap.test('POST /users/signup with missing email', async (t) => {
-    const response = await server.post('/users/signup').send({
+tap.test('POST /api/auth/users/signup missing email', async (t) => {
+    const res = await server.post('/api/auth/users/signup').send({
         name: mockUser.name,
         password: mockUser.password
     });
-    t.equal(response.status, 400);
+    t.equal(res.status, 400);
     t.end();
 });
 
-tap.test('POST /users/login', async (t) => { 
-    const response = await server.post('/users/login').send({
+tap.test('POST /api/auth/users/login', async (t) => {
+    const res = await server.post('/api/auth/users/login').send({
         email: mockUser.email,
         password: mockUser.password
     });
-    t.equal(response.status, 200);
-    t.hasOwnProp(response.body, 'token');
-    token = response.body.token;
+    t.equal(res.status, 200);
+    t.hasOwnProp(res.body, 'token');
+    token = res.body.token;
     t.end();
 });
 
-tap.test('POST /users/login with wrong password', async (t) => {
-    const response = await server.post('/users/login').send({
+tap.test('POST /api/auth/users/login wrong password', async (t) => {
+    const res = await server.post('/api/auth/users/login').send({
         email: mockUser.email,
         password: 'wrongpassword'
     });
-    t.equal(response.status, 401);
+    t.equal(res.status, 401);
     t.end();
 });
 
 // Preferences tests
-
-tap.test('GET /users/preferences', async (t) => {
-    const response = await server.get('/users/preferences').set('Authorization', `Bearer ${token}`);
-    t.equal(response.status, 200);
-    t.hasOwnProp(response.body, 'preferences');
-    t.same(response.body.preferences, mockUser.preferences);
+tap.test('GET /api/preferences with token', async (t) => {
+    const res = await server.get('/api/preferences').set('Authorization', `Bearer ${token}`);
+    t.equal(res.status, 200);
+    t.hasOwnProp(res.body, 'preferences');
+    t.same(res.body.preferences, mockUser.preferences);
     t.end();
 });
 
-tap.test('GET /users/preferences without token', async (t) => {
-    const response = await server.get('/users/preferences');
-    t.equal(response.status, 401);
+tap.test('GET /api/preferences without token', async (t) => {
+    const res = await server.get('/api/preferences');
+    t.equal(res.status, 401);
     t.end();
 });
 
-tap.test('PUT /users/preferences', async (t) => {
-    const response = await server.put('/users/preferences').set('Authorization', `Bearer ${token}`).send({
-        preferences: ['movies', 'comics', 'games']
-    });
-    t.equal(response.status, 200);
+tap.test('PUT /api/preferences', async (t) => {
+    const res = await server.put('/api/preferences')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ preferences: ['us', 'technology'] });
+    t.equal(res.status, 200);
+    t.same(res.body.preferences, ['us', 'technology']);
+    t.end();
 });
 
-tap.test('Check PUT /users/preferences', async (t) => {
-    const response = await server.get('/users/preferences').set('Authorization', `Bearer ${token}`);
-    t.equal(response.status, 200);
-    t.same(response.body.preferences, ['movies', 'comics', 'games']);
+tap.test('Check PUT /api/preferences', async (t) => {
+    const res = await server.get('/api/preferences').set('Authorization', `Bearer ${token}`);
+    t.equal(res.status, 200);
+    t.same(res.body.preferences, ['us', 'technology']);
     t.end();
 });
 
 // News tests
+tap.test('GET /api/news first request (API)', async (t) => {
+    // Clear cache
+    newsCache.data = null;
+    newsCache.timestamp = null;
 
-tap.test('GET /news', async (t) => {
-    const response = await server.get('/news').set('Authorization', `Bearer ${token}`);
-    t.equal(response.status, 200);
-    t.hasOwnProp(response.body, 'news');
+    const res = await server.get('/api/news').set('Authorization', `Bearer ${token}`);
+    t.equal(res.status, 200);
+    t.hasOwnProp(res.body, 'news');
+    t.equal(res.body.source, 'api');
+    t.ok(newsCache.data, 'Cache should be populated');
     t.end();
 });
 
-tap.test('GET /news without token', async (t) => {
-    const response = await server.get('/news');
-    t.equal(response.status, 401);
+tap.test('GET /api/news second request (cache)', async (t) => {
+    const res = await server.get('/api/news').set('Authorization', `Bearer ${token}`);
+    t.equal(res.status, 200);
+    t.hasOwnProp(res.body, 'news');
+    t.equal(res.body.source, 'cache');
     t.end();
 });
 
-
-
-tap.teardown(() => {
-    process.exit(0);
+tap.test('GET /api/news without token', async (t) => {
+    const res = await server.get('/api/news');
+    t.equal(res.status, 401);
+    t.end();
 });
+
+tap.teardown(() => process.exit(0));
